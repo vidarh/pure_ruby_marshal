@@ -11,7 +11,7 @@ class PureRubyMarshal::WriteBuffer
     when nil then write_nil
     when true then write_true
     when false then write_false
-    when Fixnum
+    when Integer
       append('i')
       write_fixnum(current_object)
     when String
