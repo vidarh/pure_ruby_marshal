@@ -1,28 +1,51 @@
 require 'spec_helper'
 
 describe PureRubyMarshal do
+  
+  describe '.dump' do
+    FIXTURES.each do |fixture_name, fixture_value|
+      it "produces identical dump to Marshal for #{fixture_name}" do
+        prm = PureRubyMarshal.dump(fixture_value)
+        mri = Marshal.dump(fixture_value)
+        if fixture_value.is_a?(Float)
+          expect(prm.to_s).to eq(mri.to_s)
+        else
+          expect(prm).to eq(mri)
+        end
+      end
+    end
+
+    FIXTURES.each do |fixture_name, fixture_value|
+      it "writes marshalled #{fixture_name}" do
+        marshalled = PureRubyMarshal.dump(fixture_value)
+        loaded = Marshal.load(marshalled)
+        if fixture_value.is_a?(Float)
+          expect(loaded.to_s).to eq(fixture_value.to_s)
+        else
+          expect(loaded).to eq(fixture_value)
+        end
+      end
+    end
+  end
+
   describe '.load' do
     FIXTURES.each do |fixture_name, fixture_value|
       it "loads marshalled #{fixture_name}" do
-        result = PureRubyMarshal.load(Marshal.dump(fixture_value))
-        expect(result).to eq(fixture_value)
+        dumped = Marshal.dump(fixture_value)
+        result = PureRubyMarshal.load(dumped)
+        if fixture_value.is_a?(Float)
+          expect(result.to_s).to eq(fixture_value.to_s)
+        else
+          expect(result).to eq(fixture_value)
+        end
       end
     end
 
     it 'loads marshalled extended object' do
       object = [].extend(MyModule)
-      result = PureRubyMarshal.load(Marshal.dump(object))
+      dump = Marshal.dump(object)
+      result = PureRubyMarshal.load(dump)
       expect(result).to be_a(MyModule)
-    end
-  end
-
-  describe '.dump' do
-    FIXTURES.each do |fixture_name, fixture_value|
-      it "writes marshalled #{fixture_name}" do
-        marshalled = PureRubyMarshal.dump(fixture_value)
-        loaded = Marshal.load(marshalled)
-        expect(loaded).to eq(fixture_value)
-      end
     end
   end
 end

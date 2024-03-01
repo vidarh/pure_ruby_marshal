@@ -1,148 +1,110 @@
-class PureRubyMarshal::WriteBuffer
-  attr_reader :object, :data
 
-  def initialize(object)
-    @object = object
-    @data = "\x04\b" # '4.8' (version)
+module PureRubyMarshal
+  class WriteBuffer
+
+  def initialize
+    @ocache, @scache = {}, {}
   end
 
-  def write(current_object = object)
-    case current_object
-    when nil then write_nil
-    when true then write_true
-    when false then write_false
-    when Integer
-      append('i')
-      write_fixnum(current_object)
-    when String
-      append('"')
-      write_string(current_object)
-    when Symbol
-      append(':')
-      write_symbol(current_object)
-    when Array
-      append('[')
-      write_array(current_object)
-    when Hash
-      append('{')
-      write_hash(current_object)
-    when Float
-      append('f')
-      write_float(current_object)
-    when Class
-      append('c')
-      write_class(current_object)
-    when Module
-      append('m')
-      write_module(current_object)
-    when Struct
-      append('S')
-      write_struct(current_object)
-    when Regexp
-      append('/')
-      write_regexp(current_object)
-    when Object
-      append('o')
-      write_object(current_object)
-    else raise NotImplementedError
+  def dump(object); "\x04\b" << write(object); end
+
+  private
+    
+  def str(s); s=s.to_s; fixnum(s.length)<<s; end
+  def symbol(s); cache(";", s.to_sym, @scache) { ':' << str(s) }; end
+  def hash(h)
+    str = fixnum(h.length)
+    h.each { |k,v| str << write(k) << write(v) }
+    str
+  end
+
+  def basic(ob)
+    return 'f'+str("0") if ob.class == Float && ob == 0.0
+    case ob
+      when  nil     then '0'
+      when  true    then 'T'
+      when  false   then 'F'
+      when  0       then "i\0"
+      when -0.0     then 'f'+str("-0")
+# Disabling due to Mruby
+#      when  Regexp  then '/'+str(ob.source)+fixnum(ob.options)
+      when  Integer
+        if ob >= 2**30 || ob < -2**30
+          'l'+bignum(ob)
+        else
+          'i'+fixnum(ob)
+        end
+      when  String  then '"'+str(ob)
+      when  Symbol  then symbol(ob)
+      when  Float::INFINITY then 'f'+str("inf")
+      when -Float::INFINITY then 'f'+str("-inf")
+      when  Float   then 'f'+str(ob.nan? ? "nan" : ob)
+      else nil
     end
-
-    data
   end
 
-  def append(s)
-    @data += s
+  def userclass(cur, klass)
+    cur.class != klass ? ('C' << symbol(cur.class.name)) : ''
+  end
+  
+  def write(cur)
+    v = basic(cur)
+    return v if v
+    cache("@", cur.object_id, @ocache) do
+      case cur
+      when Class  then 'c' << str(cur.name)
+      when Module then 'm' << str(cur.name)
+      when Struct then 'S' << symbol(cur.class.name) << hash(cur.to_h)
+      when Hash   then '{' << hash(cur)
+      when Array
+        userclass(cur, Array) << '[' << fixnum(cur.length) <<
+        cur.map { |a| write(a) }.join("")
+      else
+        'o' << symbol(cur.class.name) << hash(
+          cur.instance_variables.map {|ivar|
+            [ivar, cur.instance_variable_get(ivar)]
+          }
+        )
+      end
+    end
   end
 
-  def write_nil
-    append('0')
-  end
-
-  def write_true
-    append('T')
-  end
-
-  def write_false
-    append('F')
-  end
-
-  def write_fixnum(n)
-    if n == 0
-      append n.chr
-    elsif n > 0 && n < 123
-      append (n + 5).chr
-    elsif n < 0 && n > -124
-      append (256 + n - 5).chr
+  def fixnum(n)
+    case n
+    when 0        then "\0"
+    when 1...123  then (n + 5).chr
+    when -123..-1 then (256 + n - 5).chr
     else
-      count = 0
       result = ""
-      4.times do |i|
-        b = n & 255
-        result += b.chr
+      while n != 0 && n != -1
+        result << (n & 255).chr
         n >>= 8
-        count += 1
-        break if n == 0 || n == -1
       end
 
-      l_byte = n < 0 ? 256 - count : count
-
-      append(l_byte.chr)
-      append(result)
+      l_byte = n < 0 ? 256 - result.length : result.length
+      l_byte.chr + result
     end
   end
 
-  def write_string(s)
-    write_fixnum(s.length)
-    append(s)
-  end
-
-  def write_symbol(sym)
-    write_fixnum(sym.length)
-    append(sym.to_s)
-  end
-
-  def write_array(a)
-    write_fixnum(a.length)
-    a.each { |item| write(item) }
-  end
-
-  def write_hash(hash)
-    write_fixnum(hash.length)
-    hash.each do |k, v|
-      write(k)
-      write(v)
+  def bignum(n)
+    sign = n >= 0 ? "+" : "-"
+    n = n.abs
+    bytes = ""
+    while n > 0
+      bytes << (n&0xff).chr
+      n>>=8
     end
+    len = (bytes.length+1)/2
+    bytes << "\0" if bytes.length < len*2
+    sign+fixnum(len)+bytes
   end
 
-  def write_float(f)
-    write_string(f.to_s)
-  end
-
-  def write_class(klass)
-    write_string(klass.name)
-  end
-
-  def write_module(mod)
-    write_string(mod.name)
-  end
-
-  def write_struct(struct)
-    write(struct.class.name.to_sym)
-    hash = struct.members.zip(struct.values)
-    write_hash(hash)
-  end
-
-  def write_regexp(regexp)
-    write_string(regexp.source)
-    write_fixnum(regexp.options)
-  end
-
-  def write_object(object)
-    write(object.class.name.to_sym)
-    ivar_data = object.instance_variables.map do |ivar_name|
-      [ivar_name, object.instance_variable_get(ivar_name)]
+  def cache(type, key, cc)
+    if ol = cc[key]
+      return type+fixnum(ol)
     end
-    ivar_data = Hash[ivar_data]
-    write_hash(ivar_data)
+    cc[key] = cc.count
+    yield
   end
+end
 end

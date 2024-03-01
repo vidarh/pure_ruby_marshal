@@ -2,7 +2,7 @@ class PureRubyMarshal::ReadBuffer
   attr_reader :data, :major_version, :minor_version
 
   def initialize(data)
-    @data = data.split('')
+    @data = data.unpack("C*")
     @major_version = read_byte
     @minor_version = read_byte
     @symbols_cache = []
@@ -10,11 +10,11 @@ class PureRubyMarshal::ReadBuffer
   end
 
   def read_byte
-    read_char.ord
+    data.shift
   end
 
   def read_char
-    data.shift
+    read_byte.chr
   end
 
   def read
@@ -24,6 +24,7 @@ class PureRubyMarshal::ReadBuffer
     when 'T' then true
     when 'F' then false
     when 'i' then read_integer
+    when 'l' then read_bignum
     when ':' then read_symbol
     when '"' then read_string
     when 'I' then read
@@ -44,30 +45,31 @@ class PureRubyMarshal::ReadBuffer
     end
   end
 
+  def read_bignum
+    sign = read_char
+    len = read_integer * 2
+    bytes = len.times.map{|i| [read_byte,i] }
+    result = 0
+    bytes.each do |byte, exp|
+      result += (byte * 2 ** (exp * 8))
+    end
+    sign == "+" ? result : -result
+  end
+  
   def read_integer
     # c is our first byte
     c = (read_byte ^ 128) - 128
 
     case c
-    when 0
-      # 0 means 0
-      0
-    when (4..127)
-      # case for small positive numbers
-      c - 5
-    when (1..3)
-      # c next bytes is our big positive number
-      c.
-        times.
+    when 0 then 0
+    when (5..127)   then c - 5
+    when (-128..-6) then c + 5
+    when (1..4)
+      c.times.
         map { |i| [i, read_byte] }.
         inject(0) { |result, (i, byte)| result | (byte << (8*i))  }
-    when (-128..-6)
-      # case for small negative numbers
-      c + 5
     when (-5..-1)
-      # (-c) next bytes is our number
-      (-c).
-        times.
+      (-c).times.
         map { |i| [i, read_byte] }.
         inject(-1) do |result, (i, byte)|
           a = ~(0xff << (8*i))
@@ -102,15 +104,25 @@ class PureRubyMarshal::ReadBuffer
   end
 
   def read_hash(cache: true)
-    pairs = read_integer.times.map { [read, read] }
-    hash = Hash[pairs]
-    @objects_cache << hash if cache
-    hash
+    Hash.new.tap do |hash|
+      @objects_cache << hash if cache
+      read_integer.times do
+        k = read
+        v = read
+        hash[k]=v
+      end
+    end
   end
 
   def read_float
     cache_object {
-      read_string(cache: false).to_f
+      str = read_string(cache: false)
+      if str == "inf" then Float::INFINITY
+      elsif str == "-inf" then -Float::INFINITY
+      elsif str == "nan" then Float::NAN
+      else
+        str.to_f
+      end
     }
   end
 
@@ -145,7 +157,7 @@ class PureRubyMarshal::ReadBuffer
   def read_struct
     cache_object {
       klass = marshal_const_get(read)
-      attributes = read_hash(cache: false)
+      attributes = read_hash(cache: true)
       values = attributes.values_at(*klass.members)
       klass.new(*values)
     }
