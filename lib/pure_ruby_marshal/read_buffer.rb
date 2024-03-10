@@ -30,6 +30,7 @@ class PureRubyMarshal::ReadBuffer
     when 'I' then read
     when '[' then read_array
     when '{' then read_hash
+    when '}' then read_hash(with_default: true)
     when 'f' then read_float
     when 'c' then read_class
     when 'm' then read_module
@@ -37,6 +38,8 @@ class PureRubyMarshal::ReadBuffer
     when '/' then read_regexp
     when 'o' then read_object
     when 'C' then read_userclass
+    when 'u' then read_load
+    when 'U' then read_marshal_load
     when 'e' then read_extended_object
     when ';' then read_symbol_link
     when '@' then read_object_link
@@ -103,7 +106,7 @@ class PureRubyMarshal::ReadBuffer
     }
   end
 
-  def read_hash(cache: true)
+  def read_hash(cache: true, with_default: false)
     Hash.new.tap do |hash|
       @objects_cache << hash if cache
       read_integer.times do
@@ -111,6 +114,7 @@ class PureRubyMarshal::ReadBuffer
         v = read
         hash[k]=v
       end
+      hash.default = read if with_default
     end
   end
 
@@ -171,6 +175,25 @@ class PureRubyMarshal::ReadBuffer
     }
   end
 
+  def read_load
+    cache_object {
+      klass = marshal_const_get(read)
+      str = read_string
+      klass._load(str)
+    }
+  end
+
+  def read_marshal_load
+    cache_object {
+      klass = marshal_const_get(read)
+      data = read
+      object = klass.allocate
+      object.marshal_load(data)
+      object
+    }
+  end
+  
+  
   def read_object
     cache_object {
       klass = marshal_const_get(read)
@@ -187,7 +210,11 @@ class PureRubyMarshal::ReadBuffer
     cache_object {
       klass = marshal_const_get(read)
       data = read
-      klass.new(data)
+      if data.is_a?(Hash)
+        p data
+      else
+        klass.new(data)
+      end
     }
   end
 

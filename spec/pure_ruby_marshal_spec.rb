@@ -22,7 +22,7 @@ describe PureRubyMarshal do
         if fixture_value.is_a?(Float)
           expect(loaded.to_s).to eq(fixture_value.to_s)
         else
-          expect(loaded).to eq(fixture_value)
+          expect(loaded.inspect).to eq(fixture_value.inspect)
         end
       end
     end
@@ -36,7 +36,7 @@ describe PureRubyMarshal do
         if fixture_value.is_a?(Float)
           expect(result.to_s).to eq(fixture_value.to_s)
         else
-          expect(result).to eq(fixture_value)
+          expect(result.inspect).to eq(fixture_value.inspect)
         end
       end
     end
