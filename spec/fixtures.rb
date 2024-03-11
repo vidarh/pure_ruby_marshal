@@ -20,6 +20,7 @@ class UserArray < Array
 end
 
 class UserHash < Hash
+  def inspect = "<UserHash #{super}>"
 end
 
 class UserString < Hash

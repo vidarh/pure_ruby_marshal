@@ -1,8 +1,11 @@
 # PureRubyMarshal
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/pure_ruby_marshal`. To experiment with that code, run `bin/console` for an interactive prompt.
+A pure Ruby re-implementation of Marshal. This fork has been expanded
+to support *most* of Marshal, but some functionality (most notably
+support for string encodings and Regexp) has been disabled to make it
+work with Mruby, and especially with DragonRuby.
 
-TODO: Delete this and the text above, and describe your gem
+(Note that the *test suite* won't run under Mruby)
 
 ## Installation
 
@@ -38,4 +41,3 @@ Bug reports and pull requests are welcome on GitHub at https://github.com/[USERN
 ## License
 
 The gem is available as open source under the terms of the [MIT License](http://opensource.org/licenses/MIT).
-

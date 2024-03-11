@@ -6,10 +6,17 @@ module PureRubyMarshal
     @ocache, @scache = {}, {}
   end
 
-  def dump(object); "\x04\b".b << write(object); end
+  def dump(object)
+    str = b("\x04\b") << write(object)
+  end
 
   private
-    
+
+  # Mruby does not support string encodings. For Rubies that do, we want an ASCII 8-BIT string.
+  def b(str)
+    str.respond_to?(:b) ? str.b : str
+  end
+
   def str(s); s=s.to_s; fixnum(s.length)<<s; end
   def symbol(s); cache(";", s.to_sym, @scache) { ':' << str(s) }; end
   def hash(h)
@@ -44,7 +51,7 @@ module PureRubyMarshal
   end
 
   def userclass(cur, klass)
-    cur.class != klass ? ('C'.b << symbol(cur.class.name)) : ''.b
+    cur.class != klass ? ('C' << symbol(cur.class.name)) : ''
   end
   
   def write(cur)
